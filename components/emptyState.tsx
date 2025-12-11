@@ -16,13 +16,7 @@ export const EmptyState: React.FC<EmptyStateProps> = ({ onAddTask }) => {
       <View style={styles.content}>
         {/* Icon with decoration */}
         <View style={styles.iconContainer}>
-          <View style={styles.iconCircle}>
-            <ClipboardList 
-              size={64} 
-              color={COLORS.primary} 
-              strokeWidth={1.5}
-            />
-          </View>
+          
           <View style={styles.sparkle1}>
             <Sparkles size={20} color={COLORS.primaryLight} strokeWidth={2} />
           </View>
