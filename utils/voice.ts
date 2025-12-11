@@ -3,22 +3,21 @@ import { VoiceInputResult } from "../types";
 const OPENAI_API_KEY = process.env.EXPO_PUBLIC_OPENAI_API_KEY!;
 
 /**
- * Uses the latest OpenAI API to split natural language input into tasks.
- * Now uses the `/v1/responses` endpoint (2025 standard)
+ * Uses OpenAI Chat Completions API to split natural language input into tasks.
  */
 export const splitTasksFromTranscription = async (
   transcription: string
 ): Promise<string[]> => {
   try {
-    const response = await fetch("https://api.openai.com/v1/responses", {
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${OPENAI_API_KEY}`,
       },
       body: JSON.stringify({
-        model: "gpt-4.1-mini",
-        input: [
+        model: "gpt-4o-mini",
+        messages: [
           {
             role: "system",
             content: `You extract tasks from natural language. 
@@ -43,16 +42,22 @@ Return nothing except a JSON array.`
       }),
     });
 
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error("OpenAI API error:", errorText);
+      return fallbackSplitTasks(transcription);
+    }
+
     const data = await response.json();
-    const text = data.output_text;
+    const text = data.choices?.[0]?.message?.content;
 
     if (!text) return fallbackSplitTasks(transcription);
 
     try {
       const parsed = JSON.parse(text);
-      if (Array.isArray(parsed)) return parsed;
-    } catch {
-      console.warn("AI returned non-JSON, using fallback.");
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    } catch (parseError) {
+      console.warn("AI returned non-JSON, using fallback:", text);
     }
 
     return fallbackSplitTasks(transcription);
@@ -66,8 +71,10 @@ Return nothing except a JSON array.`
  * Fallback string splitter when AI is unavailable
  */
 const fallbackSplitTasks = (text: string): string[] => {
+  // Remove common task prefixes
   text = text.replace(/^(i need to|i have to|i must|i should|todo:|task:)/gi, "").trim();
 
+  // Split on common separators
   const separators = /\s+and\s+|\s*,\s*|\s+then\s+|\s*;\s*/gi;
 
   const tasks = text
@@ -80,27 +87,32 @@ const fallbackSplitTasks = (text: string): string[] => {
 };
 
 /**
- * Whisper speech-to-text using OpenAI's new model (2025 standard)
+ * Whisper speech-to-text using OpenAI's Whisper model
  */
 export const transcribeAudio = async (audioBlob: Blob): Promise<string> => {
   try {
     const formData = new FormData();
-    formData.append("file", audioBlob);
-    formData.append("model", "gpt-4o-transcribe");
+    formData.append('file', audioBlob as any, 'recording.m4a');
+    formData.append('model', 'whisper-1'); // Correct Whisper model name
 
-    const response = await fetch("https://api.openai.com/v1/audio/transcriptions", {
-      method: "POST",
+    const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+      method: 'POST',
       headers: {
         Authorization: `Bearer ${OPENAI_API_KEY}`,
       },
       body: formData,
     });
 
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`OpenAI error: ${response.status} - ${text}`);
+    }
+
     const json = await response.json();
-    return json.text ?? "";
+    return json.text ?? '';
   } catch (error) {
-    console.error("Transcription failed:", error);
-    throw new Error("Failed to transcribe audio.");
+    console.error('Transcription failed:', error);
+    throw new Error('Failed to transcribe audio.');
   }
 };
 
